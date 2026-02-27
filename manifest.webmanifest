@@ -1,0 +1,9 @@
+{
+  "name": "Hiseas Material Inventory",
+  "short_name": "Hiseas IMS",
+  "description": "Fully offline local material inventory management system.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#eceef0",
+  "theme_color": "#cf1f2e"
+}

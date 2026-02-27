@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#cf1f2e">
+  <title>Material Inventory Management System</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
+  <div class="bg-shape bg-shape-b" aria-hidden="true"></div>
+
+  <main class="app-shell">
+    <section id="authSection" class="panel auth-panel">
+      <header class="auth-header">
+        <div class="auth-brand">
+          <img src="photo/hiseaslogo.png" alt="Hi-Seas logo" class="auth-logo">
+          <p class="kicker company-name">Hi-Seas Co. Ltd. Inc.</p>
+        </div>
+        <h1>Inventory Management System</h1>
+      </header>
+
+      <form id="setupForm" class="stack hidden" autocomplete="off">
+        <h2>Create Super Admin Account</h2>
+        <label>
+          Username
+          <input type="text" id="setupUsername" minlength="3" maxlength="40" required>
+        </label>
+        <label>
+          Password
+          <input type="password" id="setupPassword" minlength="6" maxlength="128" required>
+        </label>
+        <button type="submit">Create Super Admin</button>
+      </form>
+
+      <form id="loginForm" class="stack hidden" autocomplete="off">
+        <h2>Sign In</h2>
+        <label>
+          Username
+          <input type="text" id="loginUsername" minlength="3" maxlength="40" required>
+        </label>
+        <label>
+          Password
+          <input type="password" id="loginPassword" minlength="6" maxlength="128" required>
+        </label>
+        <button type="submit">Login</button>
+        <button type="button" id="guestAccessBtn" class="guest-text-btn">Continue as Guest</button>
+      </form>
+      <p id="authMessage" class="msg"></p>
+    </section>
+
+    <section id="inventorySection" class="hidden">
+      <header class="topbar panel">
+        <div class="topbar-brand">
+          <img src="photo/hiseaslogo.png" alt="Hi-Seas logo" class="topbar-logo">
+          <div>
+            <p class="kicker">Dashboard</p>
+            <h2>Inventory Management System</h2>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button id="activeUserLabel" type="button" class="badge account-trigger"></button>
+          <button id="logoutBtn" type="button" class="btn-ghost">Logout</button>
+        </div>
+      </header>
+
+      <section id="accountPanel" class="panel hidden">
+        <h3>Account Settings</h3>
+        <section id="superAdminCredentialsPanel" class="admin-management">
+          <h4>Super Admin Account</h4>
+          <div class="split credentials-grid">
+            <label>
+              Username
+              <input type="text" id="superAdminViewUsername" readonly>
+            </label>
+            <label>
+              Password
+              <input type="text" id="superAdminViewPassword" readonly>
+            </label>
+          </div>
+        </section>
+        <form id="accountForm" class="stack" autocomplete="off">
+          <label>
+            Username
+            <input type="text" id="accountUsername" minlength="3" maxlength="40" required>
+          </label>
+          <label>
+            Current Password
+            <input type="password" id="accountCurrentPassword" minlength="6" maxlength="128" required>
+          </label>
+          <label>
+            New Password (optional)
+            <input type="password" id="accountNewPassword" minlength="6" maxlength="128">
+          </label>
+          <label>
+            Confirm New Password
+            <input type="password" id="accountConfirmPassword" minlength="6" maxlength="128">
+          </label>
+          <div class="form-actions">
+            <button type="submit">Update Account</button>
+            <button type="button" id="cancelAccountBtn" class="btn-ghost">Close</button>
+          </div>
+        </form>
+        <p id="accountMessage" class="msg"></p>
+        <section id="adminAccountsPanel" class="admin-management hidden">
+          <h4>Admin Accounts</h4>
+          <ul id="adminAccountsList" class="account-list">
+            <li class="muted">No admin accounts found.</li>
+          </ul>
+        </section>
+        <section id="adminManagementPanel" class="admin-management hidden">
+          <h4>Create Admin Account</h4>
+          <form id="createAdminForm" class="stack" autocomplete="off">
+            <label>
+              Admin Username
+              <input type="text" id="newAdminUsername" minlength="3" maxlength="40" required>
+            </label>
+            <label>
+              Admin Password
+              <input type="password" id="newAdminPassword" minlength="6" maxlength="128" required>
+            </label>
+            <label>
+              Confirm Password
+              <input type="password" id="newAdminConfirmPassword" minlength="6" maxlength="128" required>
+            </label>
+            <div class="form-actions">
+              <button type="submit">Create Admin</button>
+            </div>
+          </form>
+          <p id="createAdminMessage" class="msg"></p>
+        </section>
+      </section>
+
+      <section class="metrics">
+        <article class="panel metric-card">
+          <p>Total Materials</p>
+          <strong id="metricTotal">0</strong>
+        </article>
+        <article class="panel metric-card">
+          <p>Out of Stock</p>
+          <strong id="metricLowStock">0</strong>
+        </article>
+        <article class="panel metric-card">
+          <p>Low Stock</p>
+          <strong id="metricCategories">0</strong>
+        </article>
+      </section>
+
+      <nav class="panel dashboard-nav" aria-label="Inventory navigation">
+        <button id="tabMaterialsBtn" type="button" class="tab-btn tab-btn-active">Materials</button>
+        <button id="tabAddMaterialBtn" type="button" class="tab-btn">Add Material</button>
+        <button id="tabTransactionBtn" type="button" class="tab-btn">Transaction</button>
+        <button id="tabReturnBtn" type="button" class="tab-btn">Return</button>
+        <button id="tabReportBtn" type="button" class="tab-btn">Report</button>
+      </nav>
+
+      <section id="addMaterialView" class="panel hidden">
+        <article>
+          <h3 id="formHeading">Add Material</h3>
+          <form id="materialForm" class="stack" autocomplete="off">
+            <input type="hidden" id="materialId">
+            <label>
+              Material Code
+              <input type="text" id="code" maxlength="30" required readonly>
+            </label>
+            <label>
+              Material Photo
+              <input type="file" id="photoInput" accept="image/*">
+            </label>
+            <div id="photoPreviewWrap" class="photo-preview-wrap hidden">
+              <img id="photoPreview" class="photo-preview" alt="Material photo preview">
+              <button type="button" id="clearPhotoBtn" class="btn-ghost">Remove Photo</button>
+            </div>
+            <label>
+              Material Name
+              <input type="text" id="name" maxlength="80" required>
+            </label>
+            <label>
+              Specification
+              <input type="text" id="specification" maxlength="120" placeholder="Size, grade, model, etc.">
+            </label>
+            <label>
+              Category
+              <input type="text" id="category" maxlength="50" required>
+            </label>
+            <div class="split">
+              <label>
+                Unit
+                <input type="text" id="unit" maxlength="20" placeholder="pcs, kg, box" required>
+              </label>
+              <label>
+                Quantity
+                <input type="number" id="quantity" min="0" step="1">
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" id="saveBtn">Save Material</button>
+              <button type="button" id="cancelEditBtn" class="btn-ghost hidden">Cancel Edit</button>
+            </div>
+          </form>
+          <p id="formMessage" class="msg"></p>
+        </article>
+      </section>
+
+      <section id="materialsView" class="panel">
+        <article>
+          <div class="toolbar">
+            <h3>Materials</h3>
+          </div>
+          <div class="split materials-filters">
+            <label>
+              Search
+              <input type="search" id="searchInput" placeholder="Code, name, specification, category">
+            </label>
+            <label>
+              Sort
+              <select id="sortFilter">
+                <option value="updated_desc">Latest Updated</option>
+                <option value="name_asc">Name (A-Z)</option>
+                <option value="stock_asc">Stock (Low to High)</option>
+                <option value="stock_desc">Stock (High to Low)</option>
+              </select>
+            </label>
+            <label>
+              Filter Category
+              <select id="categoryFilter">
+                <option value="">All</option>
+              </select>
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Photo</th>
+                  <th>Name</th>
+                  <th>Specification</th>
+                  <th>Category</th>
+                  <th>Stock</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="materialsBody">
+                <tr>
+                  <td colspan="8" class="muted">No materials yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="listMessage" class="msg"></p>
+        </article>
+      </section>
+
+      <section id="transactionView" class="panel hidden">
+        <article>
+          <h3>Transaction</h3>
+          <form id="transactionForm" class="stack" autocomplete="off">
+            <input type="hidden" id="transactionId">
+            <div class="split">
+              <label>
+                Material
+                <select id="transactionMaterial" required>
+                  <option value="">Select material</option>
+                </select>
+              </label>
+              <label>
+                Transaction Type
+                <select id="transactionType" required>
+                  <option value="inbound">Inbound</option>
+                  <option value="outbound">Outbound</option>
+                </select>
+              </label>
+            </div>
+            <div class="split">
+              <label>
+                Quantity
+                <input type="number" id="transactionQuantity" min="1" step="1" required>
+              </label>
+              <label>
+                Reference / Note
+                <input type="text" id="transactionNote" maxlength="120" placeholder="PO, DR, request no., etc.">
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" id="saveTransactionBtn">Save Transaction</button>
+              <button type="button" id="cancelTransactionEditBtn" class="btn-ghost hidden">Cancel Edit</button>
+            </div>
+          </form>
+          <p id="transactionMessage" class="msg"></p>
+
+          <div class="toolbar">
+            <h3>Transaction History</h3>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Photo</th>
+                  <th>Material</th>
+                  <th>Type</th>
+                  <th>Qty</th>
+                  <th>Stock After</th>
+                  <th>Note</th>
+                  <th>By</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="transactionsBody">
+                <tr>
+                  <td colspan="9" class="muted">No transactions yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="returnView" class="panel hidden">
+        <article>
+          <h3>Return</h3>
+          <form id="returnForm" class="stack" autocomplete="off">
+            <input type="hidden" id="returnId">
+            <div class="split">
+              <label>
+                Returned Material
+                <select id="returnMaterial" required>
+                  <option value="">Select material</option>
+                </select>
+              </label>
+              <label>
+                Material Condition
+                <select id="returnCondition" required>
+                  <option value="">Select condition</option>
+                  <option value="broken">Broken</option>
+                  <option value="good">Good</option>
+                  <option value="repaired">Repaired</option>
+                </select>
+              </label>
+            </div>
+            <div class="split">
+              <label>
+                Returned Quantity
+                <input type="number" id="returnQuantity" min="1" step="1" required>
+              </label>
+              <label>
+                Notes
+                <input type="text" id="returnNote" maxlength="160" placeholder="Reason, reference, remarks, etc.">
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" id="saveReturnBtn">Save Return</button>
+              <button type="button" id="cancelReturnEditBtn" class="btn-ghost hidden">Cancel Edit</button>
+            </div>
+          </form>
+          <p id="returnMessage" class="msg"></p>
+
+          <div class="toolbar">
+            <h3>Return History</h3>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Photo</th>
+                  <th>Material</th>
+                  <th>Specification</th>
+                  <th>Condition</th>
+                  <th>Qty</th>
+                  <th>Notes</th>
+                  <th>By</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="returnsBody">
+                <tr>
+                  <td colspan="9" class="muted">No returned materials yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="reportView" class="panel hidden">
+        <article>
+          <div class="toolbar">
+            <h3>Report</h3>
+            <div class="toolbar-actions">
+              <div class="report-export-label">
+                <select id="reportExportType" aria-label="Export report type">
+                  <option value="all">All Reports</option>
+                  <option value="stock">Materials Stock</option>
+                  <option value="low_stock">Low Stock Materials</option>
+                  <option value="out_of_stock">Out of Stock Materials</option>
+                  <option value="inbound">Inbound Reports</option>
+                  <option value="outbound">Outbound Reports</option>
+                </select>
+              </div>
+              <button id="exportPdfBtn" type="button">Export PDF</button>
+              <button id="exportBtn" type="button" class="btn-ghost">Export JSON</button>
+              <label id="importBtnLabel" class="btn-ghost file-btn">
+                Import JSON
+                <input id="importInput" type="file" accept="application/json">
+              </label>
+            </div>
+          </div>
+          <section class="report-grid" aria-label="Summary report">
+            <article class="report-card">
+              <p>Materials</p>
+              <strong id="reportTotalMaterials">0</strong>
+            </article>
+            <article class="report-card">
+              <p>Total Inbound</p>
+              <strong id="reportInboundTotal">0</strong>
+            </article>
+            <article class="report-card">
+              <p>Total Outbound</p>
+              <strong id="reportOutboundTotal">0</strong>
+            </article>
+          </section>
+          <section class="report-sections">
+            <div>
+              <h4>Materials Current Stock</h4>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Photo</th>
+                      <th>Material</th>
+                      <th>Specification</th>
+                      <th>Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reportStockBody">
+                    <tr>
+                      <td colspan="5" class="muted">No materials found.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h4>Low Stock Materials</h4>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Photo</th>
+                      <th>Material</th>
+                      <th>Specification</th>
+                      <th>Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reportLowStockBody">
+                    <tr>
+                      <td colspan="5" class="muted">No low stock materials found.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h4>Out of Stock Materials</h4>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Photo</th>
+                      <th>Material</th>
+                      <th>Specification</th>
+                      <th>Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reportOutOfStockBody">
+                    <tr>
+                      <td colspan="5" class="muted">No out of stock materials found.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h4>Inbound Materials Report</h4>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Photo</th>
+                      <th>Code</th>
+                      <th>Material</th>
+                      <th>Specification</th>
+                      <th>Quantity</th>
+                      <th>Note</th>
+                      <th>By</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reportInboundBody">
+                    <tr>
+                      <td colspan="8" class="muted">No inbound transactions found.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h4>Outbound Materials Report</h4>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Photo</th>
+                      <th>Code</th>
+                      <th>Material</th>
+                      <th>Specification</th>
+                      <th>Quantity</th>
+                      <th>Note</th>
+                      <th>By</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reportOutboundBody">
+                    <tr>
+                      <td colspan="8" class="muted">No outbound transactions found.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+          <p id="reportMessage" class="msg"></p>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <div id="photoZoomModal" class="photo-zoom-modal hidden" role="dialog" aria-modal="true" aria-label="Material photo preview">
+    <button id="closePhotoZoomBtn" type="button" class="photo-zoom-close" aria-label="Close photo preview">&times;</button>
+    <img id="photoZoomImage" class="photo-zoom-image" alt="Material photo enlarged view">
+  </div>
+
+  <div id="reportPdfModal" class="report-pdf-modal hidden" role="dialog" aria-modal="true" aria-label="Report PDF preview">
+    <div class="report-pdf-shell">
+      <div class="report-pdf-actions">
+        <button id="printReportPdfBtn" type="button">Print / Save as PDF</button>
+        <button id="closeReportPdfBtn" type="button" class="btn-ghost">Close Preview</button>
+      </div>
+      <iframe id="reportPdfFrame" class="report-pdf-frame" title="Report PDF preview"></iframe>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
