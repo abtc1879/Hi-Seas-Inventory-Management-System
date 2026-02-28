@@ -292,10 +292,15 @@ async function syncReturnsHistoryDb() {
 
 // ----- Remote sync helpers -----
 async function pushLocalRecordToRemote(storeName, record) {
-  if (!window.REMOTE_DB || !window.REMOTE_DB.enabled) return;
+  if (!window.REMOTE_DB || !window.REMOTE_DB.enabled || !record) return;
   try {
-    const remoteId = await window.REMOTE_DB.upsertDoc(storeName, record, record && record._remoteId);
-    if (remoteId && record && record._remoteId !== remoteId) {
+    let remoteId;
+    if (typeof window.REMOTE_DB.pushRecord === "function") {
+      remoteId = await window.REMOTE_DB.pushRecord(storeName, record);
+    } else if (typeof window.REMOTE_DB.upsertDoc === "function") {
+      remoteId = await window.REMOTE_DB.upsertDoc(storeName, record, record._remoteId);
+    }
+    if (remoteId && record._remoteId !== remoteId) {
       const updated = { ...record, _remoteId: remoteId };
       await reqToPromise(getStore(storeName, "readwrite").put(updated));
     }
@@ -321,7 +326,13 @@ async function deleteRemoteForLocal(storeName, localRecord) {
   if (!window.REMOTE_DB || !window.REMOTE_DB.enabled) return;
   try {
     const remoteId = localRecord && localRecord._remoteId;
-    if (remoteId) await window.REMOTE_DB.deleteDocById(storeName, remoteId);
+    if (remoteId) {
+      if (typeof window.REMOTE_DB.deleteRecord === "function") {
+        await window.REMOTE_DB.deleteRecord(storeName, remoteId);
+      } else if (typeof window.REMOTE_DB.deleteDocById === "function") {
+        await window.REMOTE_DB.deleteDocById(storeName, remoteId);
+      }
+    }
   } catch (err) {
     console.warn("Failed to delete remote document for", storeName, err);
   }
@@ -1256,6 +1267,53 @@ function showAuth(showSetup) {
   el.loginForm.classList.toggle("hidden", showSetup);
   setMessage(el.authMessage, showSetup ? "No account found. Create the first super admin account." : "", "");
 }
+
+// ---------------------------------------------------------------------------
+// offline auth queue helpers
+// ---------------------------------------------------------------------------
+function enqueueAuthTask(task) {
+  try {
+    const queue = JSON.parse(localStorage.getItem("authQueue") || "[]");
+    queue.push(task);
+    localStorage.setItem("authQueue", JSON.stringify(queue));
+  } catch (e) {
+    console.warn("Failed to enqueue auth task", e);
+  }
+}
+
+async function processAuthQueue() {
+  if (!navigator.onLine || !window.REMOTE_DB || !window.REMOTE_DB.enabled) {
+    return;
+  }
+
+  const queue = JSON.parse(localStorage.getItem("authQueue") || "[]");
+  if (!queue.length) {
+    return;
+  }
+
+  const remaining = [];
+  for (const task of queue) {
+    try {
+      if (task.type === "signup" && window.REMOTE_DB.signUpWithUsername) {
+        await window.REMOTE_DB.signUpWithUsername(task.username, task.password);
+      } else if (task.type === "passwordChange" && window.REMOTE_DB.changePassword) {
+        // optional: remote password change API not defined by default,
+        // developers can extend REMOTE_DB with such helper
+        await window.REMOTE_DB.changePassword(task.username, task.newPassword);
+      } else {
+        remaining.push(task);
+      }
+    } catch (err) {
+      // leave in queue for next try
+      remaining.push(task);
+    }
+  }
+  localStorage.setItem("authQueue", JSON.stringify(remaining));
+}
+
+// start processing when network comes back and at page load
+window.addEventListener("online", processAuthQueue);
+window.addEventListener("load", processAuthQueue);
 
 function showInventory() {
   el.authSection.classList.add("hidden");
@@ -2282,6 +2340,21 @@ async function handleSetupSubmit(event) {
     const passwordSalt = randomSalt();
     const passwordHash = await hashPassword(password, passwordSalt);
     await createUser(username, passwordHash, passwordSalt, ROLE_SUPER_ADMIN, password);
+
+    // post to remote auth if available
+    if (window.REMOTE_DB && window.REMOTE_DB.enabled && window.REMOTE_DB.signUpWithUsername) {
+      try {
+        await window.REMOTE_DB.signUpWithUsername(username, password);
+      } catch (err) {
+        // network failure or remote error; queue it for later
+        enqueueAuthTask({ type: "signup", username, password });
+        console.warn("Queued remote signup for", username, err);
+      }
+    } else if (!navigator.onLine) {
+      // offline: queue the task so it runs when network returns
+      enqueueAuthTask({ type: "signup", username, password });
+    }
+
     showAuth(false);
     setMessage(el.authMessage, "Super admin account created. You can now log in.", "success");
     el.setupForm.reset();
@@ -2316,6 +2389,16 @@ async function handleLoginSubmit(event) {
       return;
     }
 
+    // attempt remote sign-in for session tracking/cookie
+    if (window.REMOTE_DB && window.REMOTE_DB.enabled && window.REMOTE_DB.signInWithUsername) {
+      try {
+        await window.REMOTE_DB.signInWithUsername(username, password);
+      } catch (err) {
+        console.warn("Remote sign-in failed (may be offline)", err);
+        // don't block local login; user will still be authenticated offline
+      }
+    }
+
     state.currentUser = toUserWithRole(user);
     localStorage.setItem(SESSION_KEY, user.username);
     showInventory();
@@ -2324,7 +2407,8 @@ async function handleLoginSubmit(event) {
     await reloadReturns();
     setMessage(el.authMessage, "", "");
     el.loginForm.reset();
-  } catch {
+  } catch (err) {
+    console.error(err);
     setMessage(el.authMessage, "Login failed.", "error");
   }
 }
@@ -2400,6 +2484,19 @@ async function handleAccountSubmit(event) {
       passwordSalt = randomSalt();
       passwordHash = await hashPassword(newPassword, passwordSalt);
       passwordPlain = newPassword;
+
+      // update remote auth password if possible
+      if (window.REMOTE_DB && window.REMOTE_DB.enabled && typeof window.REMOTE_DB.changePassword === "function") {
+        try {
+          await window.REMOTE_DB.changePassword(newPassword);
+        } catch (err) {
+          // network or auth failure; enqueue for later
+          enqueueAuthTask({ type: "passwordChange", username: state.currentUser.username, newPassword });
+          console.warn("Queued remote password change", err);
+        }
+      } else if (!navigator.onLine) {
+        enqueueAuthTask({ type: "passwordChange", username: state.currentUser.username, newPassword });
+      }
     }
 
     const updatedUser = {
@@ -3138,6 +3235,15 @@ function bindEvents() {
   }
 
   el.logoutBtn.addEventListener("click", async () => {
+    // attempt remote sign-out (non‑blocking)
+    if (window.REMOTE_DB && window.REMOTE_DB.enabled && typeof window.REMOTE_DB.signOut === "function") {
+      try {
+        await window.REMOTE_DB.signOut();
+      } catch (err) {
+        console.warn("remote sign-out failed", err);
+      }
+    }
+
     state.currentUser = null;
     localStorage.removeItem(SESSION_KEY);
     hideAccountPanel();
