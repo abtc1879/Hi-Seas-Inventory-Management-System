@@ -290,6 +290,44 @@ async function syncReturnsHistoryDb() {
   await replaceHistoryStoreRows(HISTORY_RETURNS_STORE, rows);
 }
 
+// ----- Remote sync helpers -----
+async function pushLocalRecordToRemote(storeName, record) {
+  if (!window.REMOTE_DB || !window.REMOTE_DB.enabled) return;
+  try {
+    const remoteId = await window.REMOTE_DB.upsertDoc(storeName, record, record && record._remoteId);
+    if (remoteId && record && record._remoteId !== remoteId) {
+      const updated = { ...record, _remoteId: remoteId };
+      await reqToPromise(getStore(storeName, "readwrite").put(updated));
+    }
+  } catch (err) {
+    console.warn("Failed to push local record to remote:", err);
+  }
+}
+
+async function syncStoreToRemote(storeName, getAllLocalFn) {
+  if (!window.REMOTE_DB || !window.REMOTE_DB.enabled) return;
+  try {
+    const rows = await getAllLocalFn();
+    for (const r of rows) {
+      // eslint-disable-next-line no-await-in-loop
+      await pushLocalRecordToRemote(storeName, r);
+    }
+  } catch (err) {
+    console.warn("Failed to sync store to remote:", storeName, err);
+  }
+}
+
+async function deleteRemoteForLocal(storeName, localRecord) {
+  if (!window.REMOTE_DB || !window.REMOTE_DB.enabled) return;
+  try {
+    const remoteId = localRecord && localRecord._remoteId;
+    if (remoteId) await window.REMOTE_DB.deleteDocById(storeName, remoteId);
+  } catch (err) {
+    console.warn("Failed to delete remote document for", storeName, err);
+  }
+}
+
+
 function setMessage(node, text, type = "") {
   node.textContent = text;
   node.className = `msg ${type}`.trim();
@@ -499,7 +537,14 @@ async function createUser(username, passwordHash, passwordSalt, role = ROLE_ADMI
     passwordPlain: sanitize(passwordPlain),
     createdAt: now
   };
-  return reqToPromise(getStore(USERS_STORE, "readwrite").add(record));
+  const id = await reqToPromise(getStore(USERS_STORE, "readwrite").add(record));
+  try {
+    const created = await getUserById(id);
+    await pushLocalRecordToRemote(USERS_STORE, created);
+  } catch (err) {
+    console.warn("createUser remote sync failed", err);
+  }
+  return id;
 }
 
 async function getUserById(id) {
@@ -507,11 +552,25 @@ async function getUserById(id) {
 }
 
 async function updateUser(user) {
-  return reqToPromise(getStore(USERS_STORE, "readwrite").put(user));
+  const id = await reqToPromise(getStore(USERS_STORE, "readwrite").put(user));
+  try {
+    const updated = await getUserById(id);
+    await pushLocalRecordToRemote(USERS_STORE, updated);
+  } catch (err) {
+    console.warn("updateUser remote sync failed", err);
+  }
+  return id;
 }
 
 async function deleteUser(id) {
-  return reqToPromise(getStore(USERS_STORE, "readwrite").delete(id));
+  try {
+    const existing = await getUserById(id);
+    await reqToPromise(getStore(USERS_STORE, "readwrite").delete(id));
+    await deleteRemoteForLocal(USERS_STORE, existing);
+  } catch (err) {
+    console.warn("deleteUser remote sync failed", err);
+    throw err;
+  }
 }
 
 async function getAllMaterials() {
@@ -541,15 +600,36 @@ async function getMaterialByCode(code) {
 }
 
 async function saveMaterial(material) {
-  return reqToPromise(getStore(MATERIALS_STORE, "readwrite").put(material));
+  const id = await reqToPromise(getStore(MATERIALS_STORE, "readwrite").put(material));
+  try {
+    const saved = await getMaterialById(id);
+    await pushLocalRecordToRemote(MATERIALS_STORE, saved);
+  } catch (err) {
+    console.warn("saveMaterial remote sync failed", err);
+  }
+  return id;
 }
 
 async function deleteMaterial(id) {
-  return reqToPromise(getStore(MATERIALS_STORE, "readwrite").delete(id));
+  try {
+    const existing = await getMaterialById(id);
+    await reqToPromise(getStore(MATERIALS_STORE, "readwrite").delete(id));
+    await deleteRemoteForLocal(MATERIALS_STORE, existing);
+  } catch (err) {
+    console.warn("deleteMaterial remote sync failed", err);
+    throw err;
+  }
 }
 
 async function saveReturnRecord(record) {
-  return reqToPromise(getStore(RETURNS_STORE, "readwrite").add(record));
+  const id = await reqToPromise(getStore(RETURNS_STORE, "readwrite").add(record));
+  try {
+    const saved = await reqToPromise(getStore(RETURNS_STORE).get(id));
+    await pushLocalRecordToRemote(RETURNS_STORE, saved);
+  } catch (err) {
+    console.warn("saveReturnRecord remote sync failed", err);
+  }
+  return id;
 }
 
 async function applyReturnRecord({ materialId, condition, quantity, note, user }) {
@@ -830,6 +910,10 @@ async function deleteReturnHistory(id) {
   await reloadInventory();
   await reloadReturns();
   resetReturnForm();
+  if (window.REMOTE_DB && window.REMOTE_DB.enabled) {
+    await syncStoreToRemote(RETURNS_STORE, getAllReturns);
+    await syncStoreToRemote(MATERIALS_STORE, getAllMaterials);
+  }
   setMessage(el.returnMessage, "Return record deleted.", "success");
 }
 
@@ -1081,6 +1165,10 @@ async function deleteTransactionHistory(id) {
   await reloadInventory();
   await reloadTransactions();
   resetTransactionForm();
+  if (window.REMOTE_DB && window.REMOTE_DB.enabled) {
+    await syncStoreToRemote(TRANSACTIONS_STORE, getAllTransactions);
+    await syncStoreToRemote(MATERIALS_STORE, getAllMaterials);
+  }
   setMessage(el.transactionMessage, "Transaction history deleted.", "success");
 }
 
@@ -2468,6 +2556,10 @@ async function handleReturnSubmit(event) {
     resetReturnForm();
     await reloadInventory();
     await reloadReturns();
+    if (window.REMOTE_DB && window.REMOTE_DB.enabled) {
+      await syncStoreToRemote(RETURNS_STORE, getAllReturns);
+      await syncStoreToRemote(MATERIALS_STORE, getAllMaterials);
+    }
     if (returnId) {
       setMessage(el.returnMessage, "Return record updated.", "success");
     } else {
@@ -2544,6 +2636,10 @@ async function handleTransactionSubmit(event) {
     resetTransactionForm();
     await reloadInventory();
     await reloadTransactions();
+    if (window.REMOTE_DB && window.REMOTE_DB.enabled) {
+      await syncStoreToRemote(TRANSACTIONS_STORE, getAllTransactions);
+      await syncStoreToRemote(MATERIALS_STORE, getAllMaterials);
+    }
     setMessage(el.transactionMessage, transactionId ? "Transaction history updated." : "Transaction recorded.", "success");
   } catch (error) {
     setMessage(el.transactionMessage, error.message || "Failed to save transaction.", "error");

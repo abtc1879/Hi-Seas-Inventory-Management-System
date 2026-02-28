@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#cf1f2e">
+  <meta name="color-scheme" content="light dark">
+  <meta name="msapplication-TileColor" content="#cf1f2e">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Material Inventory Management System</title>
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="photo/hiseaslogo.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -61,7 +64,7 @@
           </div>
         </div>
         <div class="topbar-actions">
-          <button id="activeUserLabel" type="button" class="badge account-trigger"></button>
+          <button id="activeUserLabel" type="button" class="badge account-trigger" aria-label="User account settings"></button>
           <button id="logoutBtn" type="button" class="btn-ghost">Logout</button>
         </div>
       </header>
@@ -562,6 +565,8 @@
     </div>
   </div>
 
+  <script type="module" src="firebase-config.js"></script>
+  <script type="module" src="remote-db.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
